@@ -1,0 +1,25 @@
+namespace CASINO_MASS_PROGRAM.DTOs;
+
+public class ImportSummaryDto
+{
+    public Guid BatchId { get; set; }
+    public string FileName { get; set; } = "";
+    public DateTime UploadedAt { get; set; }
+    public string Status { get; set; } = "";
+    public int TotalRows { get; set; }
+    public int ValidRows { get; set; }
+    public int InvalidRows { get; set; }
+    public List<RowErrorDto> SampleErrors { get; set; } = new();
+}
+
+public class RowErrorDto
+{
+    public int RowNumber { get; set; }
+    public List<CellErrorDto> Errors { get; set; } = new();
+}
+
+public class CellErrorDto
+{
+    public string Column { get; set; } = "";
+    public string Message { get; set; } = "";
+}
