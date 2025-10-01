@@ -8,10 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="UnitOfWork\" />
-  </ItemGroup>
-
-  <ItemGroup>
 	  <PackageReference Include="ClosedXML" Version="0.105.0" />
 	  <PackageReference Include="Microsoft.AspNetCore.Http.Features" Version="5.0.17" />
 	  <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
@@ -24,6 +20,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="ViewModels\NewFolder1\" />
+    <Folder Include="ViewModels\Request\" />
   </ItemGroup>
 
 </Project>

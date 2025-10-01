@@ -1,11 +1,13 @@
 using Implement.ApplicationDbContext;
 using Implement.EntityModels;
 using Implement.Services;
+using Implement.Services.Interface;
 using Implement.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace CASINO_MASS_PROGRAM.Controllers;
 
@@ -14,12 +16,12 @@ namespace CASINO_MASS_PROGRAM.Controllers;
 public class ImportExcelController : ControllerBase
 {
     private readonly CasinoMassProgramDbContext _db;
-    private readonly ExcelImportService _excel;
+    private readonly IExcelService _excelService;
 
-    public ImportExcelController(CasinoMassProgramDbContext db, ExcelImportService excel)
+    public ImportExcelController(CasinoMassProgramDbContext db, IExcelService excelService)
     {
         _db = db;
-        _excel = excel;
+        _excelService = excelService;
     }
 
     [HttpPost("upload")]
@@ -31,11 +33,11 @@ public class ImportExcelController : ControllerBase
         if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             return BadRequest("Only .xlsx files are supported.");
 
-        var result = await _excel.ImportAndValidateAsync(file);
+        var result = await _excelService.ImportAndValidateAsync(file);
         return Ok(result);
     }
 
-    [HttpGet("{batchId:guid}")]
+    [HttpGet("GetSummary/{batchId}")]
     [ProducesResponseType(typeof(ImportSummaryDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSummary([FromRoute] Guid batchId)
     {
@@ -126,7 +128,7 @@ public class ImportExcelController : ControllerBase
     }
 
     // Commit with grouping by Team Representative "ID"
-    [HttpPost("{batchId:guid}/commit")]
+    [HttpPost("commit/{batchId}")]
     public async Task<IActionResult> Commit([FromRoute] Guid batchId)
     {
         var batch = await _db.ImportBatches
@@ -155,7 +157,7 @@ public class ImportExcelController : ControllerBase
             string Get(string key) => data.TryGetValue(key, out var v) ? v?.Trim() ?? "" : "";
 
             // Parse required typed values
-            if (!ExcelImportService_TryParseMonth(Get("Month"), out var monthStart)) continue;
+            if (!ExcelImportService_TryParseDateOnly(Get("Month"), out var monthStart)) continue;
             if (!ExcelImportService_TryParseDateOnly(Get("Joined date"), out var joinedDate)) continue;
             if (!ExcelImportService_TryParseDateOnly(Get("Last gaming date"), out var lastGamingDate)) continue;
             if (!ExcelImportService_TryParseYesNo(Get("Eligible (Y/N)"), out var eligible)) continue;
@@ -257,9 +259,45 @@ public class ImportExcelController : ControllerBase
 
     private static bool TryParseDateOnly(string value, out DateOnly date)
     {
+        // Empty => default today
+        if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(value))
+        {
+            date = DateOnly.FromDateTime(DateTime.Today);
+            return true;
+        }
+
+        var v = value.Trim();
+
+        // Explicit formats: dd/MM/yyyy and MM/dd/yyyy (single-digit variants allowed)
+        string[] formats = { "dd/MM/yyyy", "d/M/yyyy", "MM/dd/yyyy", "M/d/yyyy" };
+        if (DateTime.TryParseExact(v, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var exact))
+        {
+            date = DateOnly.FromDateTime(exact);
+            return true;
+        }
+
+        // Excel OADate (serial number)
+        if (double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var oa))
+        {
+            try
+            {
+                date = DateOnly.FromDateTime(DateTime.FromOADate(oa));
+                return true;
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        // Fallback broad parse
+        if (DateTime.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+        {
+            date = DateOnly.FromDateTime(dt);
+            return true;
+        }
+
         date = default;
-        if (DateOnly.TryParse(value, out date)) return true;
-        if (DateTime.TryParse(value, out var dt)) { date = DateOnly.FromDateTime(dt); return true; }
         return false;
     }
 
@@ -283,6 +321,12 @@ public class ImportExcelController : ControllerBase
 
     private static bool TryParseYesNo(string value, out bool yes)
     {
+        // Empty => default N
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            yes = false;
+            return true;
+        }
         yes = false;
         var v = value.Trim().ToUpperInvariant();
         if (v == "Y") { yes = true; return true; }
@@ -294,13 +338,25 @@ public class ImportExcelController : ControllerBase
     {
         number = 0m;
         if (string.IsNullOrWhiteSpace(value)) return false;
+
         var v = value.Trim();
         var negative = v.StartsWith("(") && v.EndsWith(")");
         v = v.Trim('(', ')');
-        v = System.Text.RegularExpressions.Regex.Replace(v, @"[^\d\.,\-]", "");
+
+        v = Regex.Replace(v, @"[^\d\.,\-]", "");
         v = v.Replace(",", "");
+
+        if (v == "-")
+        {
+            v = "0";
+            return true;
+        }
+
         if (decimal.TryParse(v, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var d))
-        { number = negative ? -d : d; return true; }
+        {
+            number = negative ? -d : d;
+            return true;
+        }
         return false;
     }
 }

@@ -1,19 +1,48 @@
 using ClosedXML.Excel;
 using Implement.ApplicationDbContext;
 using Implement.EntityModels;
+using Implement.Repositories.Interface;
+using Implement.Services.Interface;
+using Implement.UnitOfWork;
 using Implement.ViewModels;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Implement.Services;
 
-public class ExcelImportService
+public class ExcelService : IExcelService
 {
-    private readonly CasinoMassProgramDbContext _db;
-
-    public ExcelImportService(CasinoMassProgramDbContext db) => _db = db;
+    private readonly ILogger<ExcelService> _logger;
+    private readonly IImportBatchRepository _importBatchRepository;
+    private readonly IImportCellErrorRepository _importCellErrorRepository;
+    private readonly IImportRowRepository _importRowRepository;
+    private readonly IAwardSettlementRepository _awardSettlementRepository;
+    private readonly ITeamRepresentativeRepository _teamRepresentativeRepository;
+    private readonly IMemberRepository _memberRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    public ExcelService(
+        ILogger<ExcelService> logger,
+        IImportBatchRepository importBatchRepository,
+        IImportCellErrorRepository importCellErrorRepository,
+        IImportRowRepository importRowRepository,
+        IAwardSettlementRepository awardSettlementRepository,
+        ITeamRepresentativeRepository teamRepresentativeRepository,
+        IMemberRepository memberRepository,
+        IUnitOfWork unitOfWork
+    )
+    {
+        _logger = logger;
+        _importBatchRepository = importBatchRepository;
+        _importCellErrorRepository = importCellErrorRepository;
+        _importRowRepository = importRowRepository;
+        _awardSettlementRepository = awardSettlementRepository;
+        _teamRepresentativeRepository = teamRepresentativeRepository;
+        _memberRepository = memberRepository;
+        _unitOfWork = unitOfWork;
+    }
 
     // Expected headers (ALL required)
     private static readonly string[] RequiredHeaders = new[]
@@ -26,9 +55,9 @@ public class ExcelImportService
         "No",
         "Member ID",
         "Member name",
-        "Joined date",
-        "Last gaming date",
-        "Eligible (Y/N)",
+        //"Joined date",
+        //"Last gaming date",
+        //"Eligible (Y/N)",
         "Casino win/(loss)",
         "Award settlement"
     };
@@ -105,8 +134,8 @@ public class ExcelImportService
         batch.ValidRows = valid;
         batch.InvalidRows = invalid;
 
-        _db.ImportBatches.Add(batch);
-        await _db.SaveChangesAsync();
+        await _importBatchRepository.AddAsync(batch);
+        await _unitOfWork.CompleteAsync();
 
         return new ImportSummaryDto
         {
@@ -155,6 +184,8 @@ public class ExcelImportService
             errors.Add(("Last gaming date", "Invalid date"));
 
         // Eligible
+        var check = TryParseYesNo(data["Eligible (Y/N)"], out _);
+
         if (!TryParseYesNo(data["Eligible (Y/N)"], out _))
             errors.Add(("Eligible (Y/N)", "Must be Y or N"));
 
@@ -171,7 +202,7 @@ public class ExcelImportService
     private static bool TryParseDateOnly(string value, out DateOnly date)
     {
         // Empty => default today
-        if (string.IsNullOrWhiteSpace(value))
+        if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(value))
         {
             date = DateOnly.FromDateTime(DateTime.Today);
             return true;

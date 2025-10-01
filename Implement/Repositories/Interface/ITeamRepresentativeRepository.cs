@@ -3,7 +3,7 @@ using Implement.EntityModels;
 
 namespace Implement.Repositories.Interface
 {
-    public interface ITeamRepresentativeRepository : IGenericRepository<TeamRepresentativeMember>
+    public interface ITeamRepresentativeRepository : IGenericRepository<TeamRepresentative>
     {
     }
 }
