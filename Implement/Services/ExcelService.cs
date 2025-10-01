@@ -155,6 +155,133 @@ public class ExcelService : IExcelService
         };
     }
 
+    public async Task ApprovedImport(Guid batchId)
+    {
+        var batch = await _importBatchRepository.FirstOrDefaultAsync(b => b.Id == batchId);
+        if (batch is null) throw new Exception("Not Found batch");
+
+        if (batch.Rows == null || batch.Rows.Count == 0)
+        {
+            var rows = await _importRowRepository.FindAsync(r => r.BatchId == batch.Id);
+            batch.Rows = rows.ToList();
+        }
+
+        if (!string.Equals(batch.Status, "Validated", StringComparison.OrdinalIgnoreCase))
+            throw new Exception("Batch must be in 'Validated' status.");
+
+        var toInsertSettlements = new List<AwardSettlement>();
+        var upsertedReps = new Dictionary<string, TeamRepresentative>(StringComparer.OrdinalIgnoreCase);
+        var upsertedMembers = new Dictionary<string, Member>(StringComparer.OrdinalIgnoreCase);
+        var trmPairs = new HashSet<(Guid RepId, Guid MemberId)>();
+
+        // Preload existing reps and members to reduce DB round-trips
+        var existingReps = await _db.TeamRepresentatives.ToListAsync();
+        foreach (var r in existingReps) upsertedReps[r.ExternalId] = r;
+
+        var existingMembers = await _db.Members.ToListAsync();
+        foreach (var m in existingMembers) upsertedMembers[m.MemberCode] = m;
+
+        foreach (var row in batch.Rows.Where(r => r.IsValid))
+        {
+            var data = JsonSerializer.Deserialize<Dictionary<string, string>>(row.RawJson) ?? new();
+            string Get(string key) => data.TryGetValue(key, out var v) ? v?.Trim() ?? "" : "";
+
+            // Parse required typed values
+            if (!TryParseDateOnly(Get("Month"), out var monthStart)) continue;
+            if (!TryParseDateOnly(Get("Joined date"), out var joinedDate)) continue;
+            if (!TryParseDateOnly(Get("Last gaming date"), out var lastGamingDate)) continue;
+            if (!TryParseYesNo(Get("Eligible (Y/N)"), out var eligible)) continue;
+            if (!TryParseMoney(Get("Casino win/(loss)"), out var casinoWinLoss)) continue;
+            if (!TryParseMoney(Get("Award settlement"), out var awardSettlement)) continue;
+            if (!int.TryParse(Get("No"), out var noValue)) continue;
+
+            // Upsert TeamRepresentative by ExternalId = "ID"
+            var repExternalId = Get("ID");
+            if (!upsertedReps.TryGetValue(repExternalId, out var rep))
+            {
+                rep = new TeamRepresentative
+                {
+                    ExternalId = repExternalId,
+                    Name = Get("Team Representative"),
+                    Segment = Get("SEGMENT")
+                };
+                _db.TeamRepresentatives.Add(rep);
+                upsertedReps[repExternalId] = rep;
+            }
+            else
+            {
+                // Keep existing values; if empty, fill from current row
+                if (string.IsNullOrWhiteSpace(rep.Name)) rep.Name = Get("Team Representative");
+                if (string.IsNullOrWhiteSpace(rep.Segment)) rep.Segment = Get("SEGMENT");
+            }
+
+            // Upsert Member by MemberCode = "Member ID"
+            var memberCode = Get("Member ID");
+            if (!upsertedMembers.TryGetValue(memberCode, out var member))
+            {
+                member = new Member
+                {
+                    MemberCode = memberCode,
+                    FullName = Get("Member name")
+                };
+                _db.Members.Add(member);
+                upsertedMembers[memberCode] = member;
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(member.FullName))
+                    member.FullName = Get("Member name");
+            }
+
+            // Link TR <-> Member in join table (dedupe in-memory)
+            trmPairs.Add((rep.Id, member.Id));
+
+            // Per-row settlement
+            var settlement = new AwardSettlement
+            {
+                TeamRepresentative = rep,
+                Member = member,
+                MonthStart = monthStart,
+                SettlementDoc = Get("Settlement Doc"),
+                No = noValue,
+                JoinedDate = joinedDate,
+                LastGamingDate = lastGamingDate,
+                Eligible = eligible,
+                CasinoWinLoss = casinoWinLoss,
+                AwardSettlementAmount = awardSettlement
+            };
+            toInsertSettlements.Add(settlement);
+        }
+
+        // Persist all changes in a single SaveChanges
+        // Insert join rows (avoid duplicates)
+        foreach (var pair in trmPairs)
+        {
+            var exists = await _db.TeamRepresentativeMembers
+                .AnyAsync(x => x.TeamRepresentativeId == pair.RepId && x.MemberId == pair.MemberId);
+            if (!exists)
+            {
+                _db.TeamRepresentativeMembers.Add(new TeamRepresentativeMember
+                {
+                    TeamRepresentativeId = pair.RepId,
+                    MemberId = pair.MemberId
+                });
+            }
+        }
+
+        _db.AwardSettlements.AddRange(toInsertSettlements);
+        batch.Status = "Committed";
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            representatives = upsertedReps.Count,
+            members = upsertedMembers.Count,
+            links = trmPairs.Count,
+            settlementsInserted = toInsertSettlements.Count
+        });
+    }
+
     private static List<(string Column, string Message)> ValidateRow(Dictionary<string, string> data)
     {
         var errors = new List<(string, string)>();
