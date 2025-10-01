@@ -1,19 +1,19 @@
+using Implement.EntityModels;
 using Microsoft.EntityFrameworkCore;
-using CASINO_MASS_PROGRAM.Models;
 
-namespace CASINO_MASS_PROGRAM.Data;
+namespace Implement.ApplicationDbContext;
 
-public class AppDbContext : DbContext
+public class CasinoMassProgramDbContext : DbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    public CasinoMassProgramDbContext(DbContextOptions<CasinoMassProgramDbContext> options) : base(options) { }
 
-    public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
-    public DbSet<ImportRow> ImportRows => Set<ImportRow>();
-    public DbSet<ImportCellError> ImportCellErrors => Set<ImportCellError>();
-    public DbSet<Member> Members => Set<Member>();
-    public DbSet<AwardSettlement> AwardSettlements => Set<AwardSettlement>();
-    public DbSet<TeamRepresentative> TeamRepresentatives => Set<TeamRepresentative>();
-    public DbSet<TeamRepresentativeMember> TeamRepresentativeMembers => Set<TeamRepresentativeMember>();
+    public DbSet<ImportBatch> ImportBatches { get; set; }
+    public DbSet<ImportRow> ImportRows { get; set; }
+    public DbSet<ImportCellError> ImportCellErrors { get; set; }
+    public DbSet<Member> Members { get; set; }
+    public DbSet<AwardSettlement> AwardSettlements { get; set; }
+    public DbSet<TeamRepresentative> TeamRepresentatives { get; set; }
+    public DbSet<TeamRepresentativeMember> TeamRepresentativeMembers { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

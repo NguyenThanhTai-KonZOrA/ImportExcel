@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace CASINO_MASS_PROGRAM.Models;
+namespace Implement.EntityModels;
 
 public class AwardSettlement
 {

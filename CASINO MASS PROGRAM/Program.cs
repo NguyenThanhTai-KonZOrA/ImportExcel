@@ -1,12 +1,12 @@
-using System.Text.Json;
-using CASINO_MASS_PROGRAM.Data;
-using CASINO_MASS_PROGRAM.Services;
+using Implement.ApplicationDbContext;
+using Implement.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Db (SQL Server)
-builder.Services.AddDbContext<AppDbContext>(options =>
+builder.Services.AddDbContext<CasinoMassProgramDbContext>(options =>
 {
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
 #if DEBUG
@@ -22,13 +22,22 @@ builder.Services.AddScoped<ExcelImportService>();
 builder.Services
     .AddControllers()
     .AddJsonOptions(o => { o.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase; });
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Optional root redirect
-app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
-// Map controllers
+app.UseHttpsRedirection();
+
+app.UseAuthorization();
+
 app.MapControllers();
 
 app.Run();

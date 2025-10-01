@@ -1,23 +1,22 @@
-using System.Globalization;
-using System.Text.Json;
-using CASINO_MASS_PROGRAM.Data;
-using CASINO_MASS_PROGRAM.DTOs;
-using CASINO_MASS_PROGRAM.Models;
-using CASINO_MASS_PROGRAM.Services;
-using ClosedXML.Excel;
+using Implement.ApplicationDbContext;
+using Implement.EntityModels;
+using Implement.Services;
+using Implement.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using System.Text.Json;
 
 namespace CASINO_MASS_PROGRAM.Controllers;
 
+[Route("api/[controller]")]
 [ApiController]
-[Route("imports")]
 public class ImportExcelController : ControllerBase
 {
-    private readonly AppDbContext _db;
+    private readonly CasinoMassProgramDbContext _db;
     private readonly ExcelImportService _excel;
 
-    public ImportExcelController(AppDbContext db, ExcelImportService excel)
+    public ImportExcelController(CasinoMassProgramDbContext db, ExcelImportService excel)
     {
         _db = db;
         _excel = excel;

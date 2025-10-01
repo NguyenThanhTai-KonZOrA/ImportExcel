@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace CASINO_MASS_PROGRAM.Models;
+namespace Implement.EntityModels;
 
 public class ImportRow
 {

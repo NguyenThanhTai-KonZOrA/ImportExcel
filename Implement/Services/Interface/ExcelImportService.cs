@@ -1,20 +1,19 @@
+using ClosedXML.Excel;
+using Implement.ApplicationDbContext;
+using Implement.EntityModels;
+using Implement.ViewModels;
+using Microsoft.AspNetCore.Http;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using CASINO_MASS_PROGRAM.Data;
-using CASINO_MASS_PROGRAM.DTOs;
-using CASINO_MASS_PROGRAM.Models;
-using ClosedXML.Excel;
-using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
 
-namespace CASINO_MASS_PROGRAM.Services;
+namespace Implement.Services;
 
 public class ExcelImportService
 {
-    private readonly AppDbContext _db;
+    private readonly CasinoMassProgramDbContext _db;
 
-    public ExcelImportService(AppDbContext db) => _db = db;
+    public ExcelImportService(CasinoMassProgramDbContext db) => _db = db;
 
     // Expected headers (ALL required)
     private static readonly string[] RequiredHeaders = new[]

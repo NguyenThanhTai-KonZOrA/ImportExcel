@@ -1,4 +1,4 @@
-namespace CASINO_MASS_PROGRAM.DTOs;
+namespace Implement.ViewModels;
 
 public class ImportSummaryDto
 {
