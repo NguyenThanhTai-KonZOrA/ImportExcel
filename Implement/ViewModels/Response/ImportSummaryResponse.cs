@@ -15,10 +15,10 @@ public class ImportSummaryResponse
 public class RowErrorDto
 {
     public int RowNumber { get; set; }
-    public List<CellErrorDto> Errors { get; set; } = new();
+    public List<CellErrorData> Errors { get; set; } = new();
 }
 
-public class CellErrorDto
+public class CellErrorData
 {
     public string Column { get; set; } = "";
     public string Message { get; set; } = "";

@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36414.22
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CASINO MASS PROGRAM", "CASINO MASS PROGRAM\CASINO MASS PROGRAM.csproj", "{838798AC-5364-4BAA-BDDE-A53514E47604}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CasinoMassProgram", "CASINO MASS PROGRAM\CasinoMassProgram.csproj", "{838798AC-5364-4BAA-BDDE-A53514E47604}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common", "Common\Common.csproj", "{23539997-5976-4DDC-9D0B-5159FFF09F5A}"
 EndProject

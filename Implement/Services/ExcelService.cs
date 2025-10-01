@@ -152,7 +152,7 @@ public class ExcelService : IExcelService
                 .Select(r => new RowErrorDto
                 {
                     RowNumber = r.RowNumber,
-                    Errors = r.Errors.Select(e => new CellErrorDto { Column = e.Column, Message = e.Message }).ToList()
+                    Errors = r.Errors.Select(e => new CellErrorData { Column = e.Column, Message = e.Message }).ToList()
                 }).ToList()
         };
     }
@@ -177,8 +177,148 @@ public class ExcelService : IExcelService
             SampleErrors = batch.Rows.Where(r => !r.IsValid).Select(r => new RowErrorDto
             {
                 RowNumber = r.RowNumber,
-                Errors = r.Errors.Select(e => new CellErrorDto { Column = e.Column, Message = e.Message }).ToList()
+                Errors = r.Errors.Select(e => new CellErrorData { Column = e.Column, Message = e.Message }).ToList()
             }).ToList()
+        };
+    }
+
+    public async Task<ImportDetailsResponse> GetBatchDetailsAsync(Guid batchId)
+    {
+        var batch = await _importBatchRepository.FirstOrDefaultAsync(b => b.Id == batchId, b => b.Rows);
+        if (batch is null) throw new Exception("Not Found batch");
+
+        var rowsWithErrors = await _importRowRepository.FindAsync(r => r.BatchId == batch.Id, r => r.Errors);
+        batch.Rows = rowsWithErrors.OrderBy(r => r.RowNumber).ToList();
+
+        var headerSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var parsedRows = new List<(int RowNumber, bool IsValid, Dictionary<string, string> Data, List<ImportCellError> Errors)>();
+
+        foreach (var r in batch.Rows)
+        {
+            var data = string.IsNullOrWhiteSpace(r.RawJson)
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : (JsonSerializer.Deserialize<Dictionary<string, string>>(r.RawJson) ?? new(StringComparer.OrdinalIgnoreCase));
+
+            foreach (var k in data.Keys) headerSet.Add(k);
+            parsedRows.Add((r.RowNumber, r.IsValid, data, r.Errors.ToList()));
+        }
+
+        var preferredOrder = new[]
+        {
+        "SEGMENT",
+        "Team Representative",
+        "ID",
+        "Month",
+        "Settlement Doc",
+        "No",
+        "Member ID",
+        "Member name",
+        "Joined date",
+        "Last gaming date",
+        "Eligible (Y/N)",
+        "Casino win/(loss)",
+        "Award settlement"
+    };
+
+        var headers = preferredOrder.Where(h => headerSet.Contains(h)).ToList();
+        headers.AddRange(headerSet.Except(headers, StringComparer.OrdinalIgnoreCase));
+
+        return new ImportDetailsResponse
+        {
+            BatchId = batch.Id,
+            FileName = batch.FileName,
+            UploadedAt = batch.UploadedAt,
+            Status = batch.Status,
+            TotalRows = batch.TotalRows,
+            ValidRows = batch.ValidRows,
+            InvalidRows = batch.InvalidRows,
+            Headers = headers,
+            Rows = parsedRows.Select(pr => new RowDetailsData
+            {
+                RowNumber = pr.RowNumber,
+                IsValid = pr.IsValid,
+                Data = pr.Data,
+                Errors = pr.Errors.Select(e => new CellErrorData { Column = e.Column, Message = e.Message }).ToList()
+            }).ToList()
+        };
+    }
+
+    public async Task<ImportDetailsResponse> GetBatchDetailsPagingAsync(Guid batchId, int page = 1, int pageSize = 50)
+    {
+        var batch = await _importBatchRepository.FirstOrDefaultAsync(b => b.Id == batchId);
+        if (batch is null) throw new Exception("Not Found batch");
+
+        // Clamp
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 500);
+
+        // Page rows by BatchId, ordered by RowNumber, include Errors
+        var paged = await _importRowRepository.FindPagedAsync(
+            r => r.BatchId == batchId,
+            page,
+            pageSize,
+            q => q.OrderBy(r => r.RowNumber),
+            r => r.Errors
+        );
+
+        // Build headers: Required + keys from current page
+        var headerSet = new HashSet<string>(RequiredHeaders, StringComparer.OrdinalIgnoreCase);
+        var parsedRows = new List<(int RowNumber, bool IsValid, Dictionary<string, string> Data, List<ImportCellError> Errors)>();
+
+        foreach (var r in paged.Items)
+        {
+            var data = string.IsNullOrWhiteSpace(r.RawJson)
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : (JsonSerializer.Deserialize<Dictionary<string, string>>(r.RawJson) ?? new(StringComparer.OrdinalIgnoreCase));
+
+            foreach (var k in data.Keys) headerSet.Add(k);
+            parsedRows.Add((r.RowNumber, r.IsValid, data, r.Errors.ToList()));
+        }
+
+        var preferredOrder = new[]
+        {
+        "SEGMENT",
+        "Team Representative",
+        "ID",
+        "Month",
+        "Settlement Doc",
+        "No",
+        "Member ID",
+        "Member name",
+        "Joined date",
+        "Last gaming date",
+        "Eligible (Y/N)",
+        "Casino win/(loss)",
+        "Award settlement"
+    };
+
+        var headers = preferredOrder.Where(headerSet.Contains).ToList();
+        headers.AddRange(headerSet.Except(headers, StringComparer.OrdinalIgnoreCase));
+
+        return new ImportDetailsResponse
+        {
+            BatchId = batch.Id,
+            FileName = batch.FileName,
+            UploadedAt = batch.UploadedAt,
+            Status = batch.Status,
+            TotalRows = batch.TotalRows,
+            ValidRows = batch.ValidRows,
+            InvalidRows = batch.InvalidRows,
+            Headers = headers,
+            Rows = parsedRows.Select(pr => new RowDetailsData
+            {
+                RowNumber = pr.RowNumber,
+                IsValid = pr.IsValid,
+                Data = pr.Data,
+                Errors = pr.Errors.Select(e => new CellErrorData { Column = e.Column, Message = e.Message }).ToList()
+            }).ToList(),
+
+            // Paging
+            Page = paged.Page,
+            PageSize = paged.PageSize,
+            TotalPages = paged.TotalPages,
+            HasPrevious = paged.HasPrevious,
+            HasNext = paged.HasNext
         };
     }
 

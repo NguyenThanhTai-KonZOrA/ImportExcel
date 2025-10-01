@@ -9,5 +9,7 @@ namespace Implement.Services.Interface
         Task<ApprovedImportResponse> ApprovedImport(Guid batchId);
         Task<ImportSummaryResponse> GetBatchSummaryAsync(Guid batchId);
         Task<(byte[] Content, string FileName, string ContentType)> DownloadAnnotatedAsync(Guid batchId);
+        Task<ImportDetailsResponse> GetBatchDetailsAsync(Guid batchId);
+        Task<ImportDetailsResponse> GetBatchDetailsPagingAsync(Guid batchId, int page = 1, int pageSize = 50);
     }
 }

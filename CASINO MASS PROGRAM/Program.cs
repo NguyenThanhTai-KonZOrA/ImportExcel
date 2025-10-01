@@ -8,6 +8,13 @@ using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddCors(opts =>
+{
+    opts.AddPolicy("AllowSpa", p => p
+        .WithOrigins("http://localhost:5173", "http://localhost:3000")
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
 
 // Db (SQL Server)
 builder.Services.AddDbContext<CasinoMassProgramDbContext>(options =>
@@ -33,6 +40,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+app.UseCors("AllowSpa");
 
 // Apply migrations / create DB at startup
 using (var scope = app.Services.CreateScope())
@@ -40,7 +48,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<CasinoMassProgramDbContext>();
     db.Database.Migrate();
 }
-
+app.UseMiddleware<ApiMiddleware>();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

@@ -1,7 +1,8 @@
 using Implement.Services.Interface;
+using Implement.ViewModels.Response;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CASINO_MASS_PROGRAM.Controllers;
+namespace CasinoMassProgram.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
@@ -66,5 +67,21 @@ public class ImportExcelController : ControllerBase
     {
         var result = await _excelService.ApprovedImport(batchId);
         return Ok(result);
+    }
+
+    [HttpGet("{batchId:guid}/details")]
+    [ProducesResponseType(typeof(ImportDetailsResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDetails([FromRoute] Guid batchId)
+    {
+        var details = await _excelService.GetBatchDetailsAsync(batchId);
+        return Ok(details);
+    }
+
+    [HttpGet("{batchId:guid}/details-paging")]
+    [ProducesResponseType(typeof(ImportDetailsResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDetails([FromRoute] Guid batchId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    {
+        var details = await _excelService.GetBatchDetailsPagingAsync(batchId, page, pageSize);
+        return Ok(details);
     }
 }
