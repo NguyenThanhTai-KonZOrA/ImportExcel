@@ -1,6 +1,6 @@
-namespace Implement.ViewModels;
+namespace Implement.ViewModels.Response;
 
-public class ImportSummaryDto
+public class ImportSummaryResponse
 {
     public Guid BatchId { get; set; }
     public string FileName { get; set; } = "";

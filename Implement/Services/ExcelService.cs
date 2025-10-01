@@ -1,10 +1,9 @@
 using ClosedXML.Excel;
-using Implement.ApplicationDbContext;
 using Implement.EntityModels;
 using Implement.Repositories.Interface;
 using Implement.Services.Interface;
 using Implement.UnitOfWork;
-using Implement.ViewModels;
+using Implement.ViewModels.Response;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
@@ -22,6 +21,7 @@ public class ExcelService : IExcelService
     private readonly IAwardSettlementRepository _awardSettlementRepository;
     private readonly ITeamRepresentativeRepository _teamRepresentativeRepository;
     private readonly IMemberRepository _memberRepository;
+    private readonly ITeamRepresentativeMemberRepository _teamRepresentativeMemberRepository;
     private readonly IUnitOfWork _unitOfWork;
     public ExcelService(
         ILogger<ExcelService> logger,
@@ -30,6 +30,7 @@ public class ExcelService : IExcelService
         IImportRowRepository importRowRepository,
         IAwardSettlementRepository awardSettlementRepository,
         ITeamRepresentativeRepository teamRepresentativeRepository,
+        ITeamRepresentativeMemberRepository teamRepresentativeMemberRepository,
         IMemberRepository memberRepository,
         IUnitOfWork unitOfWork
     )
@@ -41,6 +42,7 @@ public class ExcelService : IExcelService
         _awardSettlementRepository = awardSettlementRepository;
         _teamRepresentativeRepository = teamRepresentativeRepository;
         _memberRepository = memberRepository;
+        _teamRepresentativeMemberRepository = teamRepresentativeMemberRepository;
         _unitOfWork = unitOfWork;
     }
 
@@ -62,7 +64,7 @@ public class ExcelService : IExcelService
         "Award settlement"
     };
 
-    public async Task<ImportSummaryDto> ImportAndValidateAsync(IFormFile file)
+    public async Task<ImportSummaryResponse> ImportAndValidateAsync(IFormFile file)
     {
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
@@ -137,7 +139,7 @@ public class ExcelService : IExcelService
         await _importBatchRepository.AddAsync(batch);
         await _unitOfWork.CompleteAsync();
 
-        return new ImportSummaryDto
+        return new ImportSummaryResponse
         {
             BatchId = batch.Id,
             FileName = batch.FileName,
@@ -155,7 +157,32 @@ public class ExcelService : IExcelService
         };
     }
 
-    public async Task ApprovedImport(Guid batchId)
+    public async Task<ImportSummaryResponse> GetBatchSummaryAsync(Guid batchId)
+    {
+        var batch = await _importBatchRepository.FirstOrDefaultAsync(b => b.Id == batchId, b => b.Rows);
+        if (batch is null) throw new Exception("Not Found batch");
+
+        var rows = await _importRowRepository.FindAsync(r => r.BatchId == batch.Id, r => r.Errors);
+        batch.Rows = rows.ToList();
+
+        return new ImportSummaryResponse
+        {
+            BatchId = batch.Id,
+            FileName = batch.FileName,
+            UploadedAt = batch.UploadedAt,
+            Status = batch.Status,
+            TotalRows = batch.TotalRows,
+            ValidRows = batch.ValidRows,
+            InvalidRows = batch.InvalidRows,
+            SampleErrors = batch.Rows.Where(r => !r.IsValid).Select(r => new RowErrorDto
+            {
+                RowNumber = r.RowNumber,
+                Errors = r.Errors.Select(e => new CellErrorDto { Column = e.Column, Message = e.Message }).ToList()
+            }).ToList()
+        };
+    }
+
+    public async Task<ApprovedImportResponse> ApprovedImport(Guid batchId)
     {
         var batch = await _importBatchRepository.FirstOrDefaultAsync(b => b.Id == batchId);
         if (batch is null) throw new Exception("Not Found batch");
@@ -175,10 +202,10 @@ public class ExcelService : IExcelService
         var trmPairs = new HashSet<(Guid RepId, Guid MemberId)>();
 
         // Preload existing reps and members to reduce DB round-trips
-        var existingReps = await _db.TeamRepresentatives.ToListAsync();
+        var existingReps = await _teamRepresentativeRepository.GetAllAsync();
         foreach (var r in existingReps) upsertedReps[r.ExternalId] = r;
 
-        var existingMembers = await _db.Members.ToListAsync();
+        var existingMembers = await _memberRepository.GetAllAsync();
         foreach (var m in existingMembers) upsertedMembers[m.MemberCode] = m;
 
         foreach (var row in batch.Rows.Where(r => r.IsValid))
@@ -205,7 +232,7 @@ public class ExcelService : IExcelService
                     Name = Get("Team Representative"),
                     Segment = Get("SEGMENT")
                 };
-                _db.TeamRepresentatives.Add(rep);
+                await _teamRepresentativeRepository.AddAsync(rep);
                 upsertedReps[repExternalId] = rep;
             }
             else
@@ -224,7 +251,7 @@ public class ExcelService : IExcelService
                     MemberCode = memberCode,
                     FullName = Get("Member name")
                 };
-                _db.Members.Add(member);
+                await _memberRepository.AddAsync(member);
                 upsertedMembers[memberCode] = member;
             }
             else
@@ -257,11 +284,10 @@ public class ExcelService : IExcelService
         // Insert join rows (avoid duplicates)
         foreach (var pair in trmPairs)
         {
-            var exists = await _db.TeamRepresentativeMembers
-                .AnyAsync(x => x.TeamRepresentativeId == pair.RepId && x.MemberId == pair.MemberId);
+            var exists = await _teamRepresentativeMemberRepository.AnyAsync(x => x.TeamRepresentativeId == pair.RepId && x.MemberId == pair.MemberId);
             if (!exists)
             {
-                _db.TeamRepresentativeMembers.Add(new TeamRepresentativeMember
+                await _teamRepresentativeMemberRepository.AddAsync(new TeamRepresentativeMember
                 {
                     TeamRepresentativeId = pair.RepId,
                     MemberId = pair.MemberId
@@ -269,19 +295,86 @@ public class ExcelService : IExcelService
             }
         }
 
-        _db.AwardSettlements.AddRange(toInsertSettlements);
+        _awardSettlementRepository.AddRange(toInsertSettlements);
         batch.Status = "Committed";
-        await _db.SaveChangesAsync();
+        await _unitOfWork.CompleteAsync();
 
-        return Ok(new
+        return new ApprovedImportResponse
         {
-            representatives = upsertedReps.Count,
-            members = upsertedMembers.Count,
-            links = trmPairs.Count,
-            settlementsInserted = toInsertSettlements.Count
-        });
+            Representatives = upsertedReps.Count,
+            Members = upsertedMembers.Count,
+            Links = trmPairs.Count,
+            SettlementsInserted = toInsertSettlements.Count
+        };
     }
 
+    public async Task<(byte[] Content, string FileName, string ContentType)> DownloadAnnotatedAsync(Guid batchId)
+    {
+        var batch = await _importBatchRepository.FirstOrDefaultAsync(b => b.Id == batchId, b => b.Rows);
+        if (batch is null) throw new Exception("Batch not found.");
+        if (batch.FileContent is null || batch.FileContent.Length == 0)
+            throw new Exception("Original file content is not available.");
+
+        var rows = await _importRowRepository.FindAsync(r => r.BatchId == batch.Id, r => r.Errors);
+        batch.Rows = rows.ToList();
+
+        using var wb = new XLWorkbook(new MemoryStream(batch.FileContent));
+        var ws = wb.Worksheets.First();
+        var headerRow = ws.FirstRowUsed();
+
+        var headers = headerRow.Cells().ToDictionary(
+            c => c.Address?.ColumnNumber ?? 0,
+            c => (c.GetString() ?? string.Empty).Trim()
+        );
+
+        var errorMap = batch.Rows
+            .Where(r => !r.IsValid)
+            .ToDictionary(
+                r => r.RowNumber,
+                r => r.Errors.Select(e => (e.Column, e.Message)).ToList());
+
+        var lastCol = ws.LastColumnUsed().ColumnNumber();
+        var errorsColIdx = lastCol + 1;
+        ws.Cell(1, errorsColIdx).Value = "__Errors";
+
+        foreach (var kvp in errorMap)
+        {
+            var rowIdx = kvp.Key;
+            var xlRow = ws.Row(rowIdx);
+            if (xlRow.IsEmpty()) continue;
+
+            foreach (var (columnName, _) in kvp.Value)
+            {
+                var colIdx = headers
+                    .Where(h => string.Equals(h.Value, columnName, StringComparison.OrdinalIgnoreCase))
+                    .Select(h => h.Key)
+                    .FirstOrDefault();
+
+                if (colIdx > 0)
+                {
+                    var cell = ws.Cell(rowIdx, colIdx);
+                    cell.Style.Fill.BackgroundColor = XLColor.Yellow;
+                    cell.Style.Font.FontColor = XLColor.Black;
+                }
+            }
+
+            ws.Cell(rowIdx, errorsColIdx).Value = string.Join(" | ", kvp.Value.Select(e => $"{e.Column}: {e.Message}"));
+            ws.Cell(rowIdx, errorsColIdx).Style.Fill.BackgroundColor = XLColor.Yellow;
+        }
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        var fileName = Path.GetFileNameWithoutExtension(batch.FileName) + "_annotated.xlsx";
+        return (ms.ToArray(), fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    public async Task<List<ImportBatch>> ListBatchesAsync()
+    {
+        var batch = await _importBatchRepository.GetAllNoTrackingAsync();
+        return batch.ToList();
+    }
+
+    #region Validation and mapping values
     private static List<(string Column, string Message)> ValidateRow(Dictionary<string, string> data)
     {
         var errors = new List<(string, string)>();
@@ -446,4 +539,5 @@ public class ExcelService : IExcelService
         }
         return false;
     }
+    #endregion
 }

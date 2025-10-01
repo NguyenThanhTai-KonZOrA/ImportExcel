@@ -7,10 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="MemoryCache\" />
-    <Folder Include="Constants\" />
-    <Folder Include="Enums\" />
-    <Folder Include="Helper\" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="9.0.9" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 
 </Project>
