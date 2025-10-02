@@ -1,3 +1,4 @@
+using Common.SystemConfiguration;
 using Implement.ApplicationDbContext;
 using Implement.Repositories;
 using Implement.Repositories.Interface;
@@ -11,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(opts =>
 {
     opts.AddPolicy("AllowSpa", p => p
-        .WithOrigins("http://localhost:5173", "http://localhost:3000")
+        .WithOrigins("http://localhost:5174", "http://localhost:3000")
         .AllowAnyHeader()
         .AllowAnyMethod());
 });
@@ -21,6 +22,7 @@ builder.Services.AddDbContext<CasinoMassProgramDbContext>(options =>
         options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 #region Add Services
+builder.Services.AddSingleton<ISystemConfiguration, SystemConfiguration>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 builder.Services.AddTransient<IExcelService, ExcelService>();
